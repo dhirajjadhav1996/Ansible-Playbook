@@ -1,0 +1,393 @@
+---
+- name: System Configuration
+  hosts: new-vms
+  become: yes
+  vars:
+#    rsyslog_server_ip: "10.210.0.39"
+    ansible_python_interpreter: /usr/bin/python3
+
+    packages_to_remove:
+      - xserver-xorg
+      - avahi-daemon
+      - cups
+      - vsftpd
+      - nfs-kernel-server
+#      - dovecot-imapd
+#      - dovecot-pop3d
+      - samba
+      - squid
+      - nis
+      - talk
+      - telnet
+
+    security_banner: |
+      **********************************************************************
+      * WARNING: This system is for the use of authorized users only.     *
+      * Any unauthorized access, use, or modification is prohibited.     *
+      * Violators will be prosecuted to the fullest extent of the law.   *
+      **********************************************************************
+
+  tasks:
+    - name: Install Python on Ubuntu
+      apt:
+        name: python3
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Python on Red Hat/CentOS/AlmaLinux
+      yum:
+        name: python3
+        state: present
+      when: ansible_os_family == "Redhat"
+
+    - name: Update and upgrade packages (Ubuntu)
+      apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+
+    - name: Update and upgrade packages (RedHat/CentOS/AlmaLinux)
+      yum:
+        name: '*'
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+
+    - name: Secure swap partition
+      lineinfile:
+        path: /etc/fstab
+        regexp: '(\s+defaults\s+)'
+        line: '\1,pri=0,sw'
+        state: present
+
+    - name: Secure shared memory
+      mount:
+        path: /dev/shm
+        src: tmpfs
+        fstype: tmpfs
+        opts: defaults,noexec,nosuid,nodev
+        state: mounted
+
+    - name: Disable IPv6
+      sysctl:
+        name: "{{ item }}"
+        value: 1
+        state: present
+        reload: yes
+      loop:
+        - net.ipv6.conf.all.disable_ipv6
+        - net.ipv6.conf.default.disable_ipv6
+
+    - name: Disable wireless interfaces on Debian-based systems
+      when: ansible_os_family == "Debian"
+      shell: |
+        for iface in $(nmcli device status | grep wifi | awk '{print $1}'); do
+          nmcli radio wifi off
+          nmcli device set $iface managed no
+          nmcli device disconnect $iface
+        done
+      ignore_errors: true
+
+    - name: Disable wireless interfaces on RedHat-based systems
+      when: ansible_os_family == "RedHat"
+      shell: |
+        for iface in $(nmcli device status | grep wifi | awk '{print $1}'); do
+          nmcli radio wifi off
+          nmcli device set $iface managed no
+          nmcli device disconnect $iface
+        done
+      ignore_errors: true
+
+    - name: Ensure packet redirect sending is disabled for all IPv4 interfaces
+      sysctl:
+        name: net.ipv4.conf.all.send_redirects
+        value: 0
+        state: present
+        reload: yes
+
+    - name: Ensure packet redirect sending is disabled for default IPv4 interface
+      sysctl:
+        name: net.ipv4.conf.default.send_redirects
+        value: 0
+        state: present
+        reload: yes
+
+    - name: Ensure IP forwarding is disabled for IPv4
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: 0
+        state: present
+        reload: yes
+
+    - name: Ensure IP forwarding is disabled for IPv6
+      sysctl:
+        name: net.ipv6.conf.all.forwarding
+        value: 0
+        state: present
+        reload: yes
+
+    - name: Ensure sysctl parameters are persistent on Debian-based systems
+      when: ansible_os_family == "Debian"
+      copy:
+        content: |
+          net.ipv4.conf.all.send_redirects = 0
+          net.ipv4.conf.default.send_redirects = 0
+          net.ipv4.ip_forward = 0
+          net.ipv6.conf.all.forwarding = 0
+        dest: /etc/sysctl.d/99-sysctl.conf
+
+    - name: Ensure sysctl parameters are persistent on RedHat-based systems
+      when: ansible_os_family == "RedHat"
+      copy:
+        content: |
+          net.ipv4.conf.all.send_redirects = 0
+          net.ipv4.conf.default.send_redirects = 0
+          net.ipv4.ip_forward = 0
+          net.ipv6.conf.all.forwarding = 0
+        dest: /etc/sysctl.d/99-sysctl.conf
+
+    - name: Apply sysctl parameters
+      command: sysctl -p /etc/sysctl.d/99-sysctl.conf
+      ignore_errors: true
+
+
+    - name: Ensure suspicious packets are logged
+      sysctl:
+        name: net.ipv4.conf.all.log_martians
+        value: 1
+        state: present
+        reload: yes
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Ensure broadcast ICMP requests are ignored
+      sysctl:
+        name: net.ipv4.icmp_echo_ignore_broadcasts
+        value: 1
+        state: present
+        reload: yes
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+
+    - name: Ensure bogus ICMP responses are ignored
+      sysctl:
+        name: net.ipv4.icmp_ignore_bogus_error_responses
+        value: 1
+        state: present
+        reload: yes
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Ensure Reverse Path Filtering is enabled
+      sysctl:
+        name: net.ipv4.conf.all.rp_filter
+        value: 1
+        state: present
+        reload: yes
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Ensure TCP SYN Cookies is enabled
+      sysctl:
+        name: net.ipv4.tcp_syncookies
+        value: 1
+        state: present
+        reload: yes
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Ensure IPv6 router advertisements are not accepted
+      sysctl:
+        name: net.ipv6.conf.all.accept_ra
+        value: 0
+        state: present
+        reload: yes
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+
+    - name: Install ufw package on Ubuntu
+      apt:
+        name: ufw
+        state: present
+      when: ansible_distribution == 'Ubuntu'
+
+    - name: Ensure ufw is enabled and started on Ubuntu
+      service:
+        name: ufw
+        state: started
+        enabled: yes
+      when: ansible_distribution == 'Ubuntu'
+
+    - name: Install firewalld package on CentOS, AlmaLinux, and Red Hat
+      yum:
+        name: firewalld
+        state: present
+      when: ansible_distribution in ['CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Ensure firewalld is enabled and started on CentOS, AlmaLinux, and Red Hat
+      service:
+        name: firewalld
+        state: started
+        enabled: yes
+      when: ansible_distribution in ['CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Allow SSH on the firewall (Ubuntu)
+      command: ufw allow OpenSSH
+      register: ufw_result
+      changed_when: ufw_result.stdout != "Rules updated"
+      when: ansible_distribution == 'Ubuntu' and ufw_result is not defined
+
+    - name: Allow SSH on the firewall (CentOS, AlmaLinux, Red Hat)
+      command: firewall-cmd --zone=public --add-service=ssh --permanent
+      register: firewall_result
+      changed_when: firewall_result.rc == 0
+      when: ansible_distribution in ['CentOS', 'AlmaLinux', 'RedHat'] and firewall_result is not defined
+
+
+
+
+    - name: Ensure default group for the root account is GID 0
+      user:
+        name: root
+        group: 0
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+
+    - name: Ensure accounts in /etc/passwd use shadowed passwords
+      command: "pwconv"
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+
+    - name: Ensure /etc/shadow password fields are not empty
+      shell: |
+        awk -F: '($2 == "" ) { print $1 " does not have a shadow password" }' /etc/shadow
+      register: shadow_check
+      failed_when: shadow_check.stdout != ""
+      when: ansible_distribution in ['Ubuntu', 'CentOS', 'AlmaLinux', 'RedHat']
+
+    - name: Report accounts without shadow passwords
+      debug:
+        msg: "{{ shadow_check.stdout }}"
+      when: shadow_check.stdout != ""
+      ignore_errors: yes
+
+
+    - name: Remove unwanted packages on Ubuntu
+      apt:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ packages_to_remove }}"
+      when: ansible_distribution == 'Ubuntu'
+      ignore_errors: yes
+
+    - name: Remove unwanted packages on CentOS, AlmaLinux, Red Hat
+      yum:
+        name: "{{ item }}"
+        state: absent
+      loop: >
+        {{
+          packages_to_remove
+          | map('regex_replace', '^xserver-xorg$', 'xorg-x11-server-Xorg')
+          | map('regex_replace', '^avahi-daemon$', 'avahi')
+          | map('regex_replace', '^cups$', 'cups')
+          | map('regex_replace', '^isc-dhcp-server$', 'dhcp-server')
+          | map('regex_replace', '^slapd$', 'openldap-servers')
+          | map('regex_replace', '^bind9$', 'bind')
+          | map('regex_replace', '^vsftpd$', 'vsftpd')
+          | map('regex_replace', '^nfs-kernel-server$', 'nfs-utils')
+          | map('regex_replace', '^dovecot-imapd$', 'dovecot')
+          | map('regex_replace', '^dovecot-pop3d$', 'dovecot')
+          | map('regex_replace', '^samba$', 'samba')
+          | map('regex_replace', '^squid$', 'squid')
+          | map('regex_replace', '^nis$', 'ypserv')
+          | map('regex_replace', '^nis$', 'ypbind')
+          | map('regex_replace', '^talk$', 'talk')
+          | map('regex_replace', '^telnet$', 'telnet')
+          | map('regex_replace', '^ldap-utils$', 'openldap-clients')
+          | map('regex_replace', '^rpcbind$', 'rpcbind')
+          | list
+        }}
+      when: ansible_distribution in ['CentOS', 'AlmaLinux', 'RedHat']
+      ignore_errors: yes
+
+    - name: Create /etc/issue with security banner
+      copy:
+        content: "{{ security_banner }}"
+        dest: /etc/issue
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart SSH service
+
+
+    - name: Create /etc/issue.net with security banner
+      copy:
+        content: "{{ security_banner }}"
+        dest: /etc/issue.net
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart SSH service
+
+    - name: Ensure the SSHD configuration references the issue.net banner
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^Banner'
+        line: 'Banner /etc/issue.net'
+        state: present
+        owner: root
+        group: root
+        mode: '0644'
+
+
+#    - name: Install rsyslog
+#      package:
+#        name: rsyslog
+#       state: present
+#      loop_control:
+#        label: "{{ item }}"
+#     with_items:
+#        - rsyslog
+#        - rsyslog-gnutls
+#
+#    - name: Configure rsyslog to send logs to the central server
+#      blockinfile:
+#        path: /etc/rsyslog.conf
+#        block: |
+#          *.* @@{{ rsyslog_server_ip }}:514
+#      notify: restart rsyslog
+
+
+
+
+  handlers:
+    - name: Reload ufw on Ubuntu
+      command: ufw reload
+      listen: ufw_result.changed
+      when: ansible_distribution == 'Ubuntu' and ufw_result.changed
+
+    - name: Reload firewalld on CentOS, AlmaLinux, and Red Hat
+      service:
+        name: firewalld
+        state: reloaded
+      listen: firewall_result.changed
+      when: ansible_distribution in ['CentOS', 'AlmaLinux', 'RedHat'] and firewall_result.changed
+
+    - name: Reload SSH
+      service:
+        name: sshd
+        state: reloaded
+
+    - name: Reload PAM
+      service:
+        name: sshd
+        state: reloaded
+      when: ansible_service_mgr == 'systemd'
+
+    - name: Restart SSH service
+      service:
+        name: "{{ 'ssh' if ansible_distribution == 'Ubuntu' else 'sshd' }}"
+        state: restarted
+
+
+#    - name: restart rsyslog
+#       service:
+#        name: rsyslog
+#        state: restarted
+

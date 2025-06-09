@@ -1,0 +1,45 @@
+---
+- name: Enforce 15-character minimum password policy
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure 'libpam-pwquality' package is installed
+      apt:
+        name: libpam-pwquality
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure 'pam_pwquality' package is installed
+      yum:
+        name: pam_pwquality
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Set password length to 15 characters
+      lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: '^minlen='
+        line: 'minlen=15'
+        create: yes
+        state: present
+
+    - name: Update PAM configuration to use pwquality
+      lineinfile:
+        path: /etc/pam.d/common-password
+        regexp: '^password\s+requisite\s+pam_pwquality.so'
+        line: 'password requisite pam_pwquality.so retry=3'
+        insertbefore: '^password\s+.*pam_unix.so'
+      when: ansible_os_family == "Debian"
+
+    - name: Update PAM configuration to use pwquality
+      lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: '^password\s+requisite\s+pam_pwquality.so'
+        line: 'password requisite pam_pwquality.so retry=3'
+        insertbefore: '^password\s+.*pam_unix.so'
+      when: ansible_os_family == "RedHat"
+
+    - name: Apply password policy changes
+      shell: authconfig --updateall
+      when: ansible_os_family == "RedHat"
+

@@ -1,0 +1,78 @@
+---
+- name: Install Sophos Antivirus
+  hosts: all
+  become: true
+  tasks:
+    - name: Update package cache (Ubuntu)
+      apt:
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Update package cache (CentOS, AlmaLinux, Red Hat)
+      yum:
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+
+    - name: Install wget
+      package:
+        name: wget
+        state: present
+      become: true
+      when: ansible_os_family == 'Debian' or ansible_os_family == 'RedHat'
+
+    - name: Install tar package (Ubuntu)
+      apt:
+        name: tar
+        state: present
+      become: true
+      when: ansible_os_family == 'Debian'
+
+    - name: Install tar package (CentOS, AlmaLinux, Red Hat)
+      yum:
+        name: tar
+        state: present
+      become: true
+      when: ansible_os_family == 'RedHat'
+
+    - name: Create Sophos directory
+      file:
+        path: /root/Sophos
+        state: directory
+      become: true
+
+    - name: Change directory to Sophos
+      command:
+        cmd: echo "Changing directory to Sophos"
+      args:
+        chdir: /root/Sophos
+
+    - name: Download SophosSetup.sh
+      shell: "wget https://api-cloudstation-us-east-2.prod.hydra.sophos.com/api/download/fd537893e34c387388e701db8d10c4be/SophosSetup.sh"
+      args:
+        chdir: /root/Sophos
+      become: true
+
+    - name: Change permission of SophosSetup.sh
+      command: chmod +x SophosSetup.sh
+      args:
+        chdir: /root/Sophos
+      become: true
+
+    - name: Remove /opt/sophos-spl/ directory
+      become: yes
+      file:
+        path: /opt/sophos-spl/
+        state: absent
+
+    - name: Run SophosSetup.sh
+      command: ./SophosSetup.sh
+      args:
+        chdir: /root/Sophos
+      become: true
+
+    - name: Run Sophos Antivirus Scan
+      command: ./savscan /
+      args:
+        chdir: /root/Sophos
+      become: true
+

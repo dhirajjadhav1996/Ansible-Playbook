@@ -1,0 +1,119 @@
+---
+- name: Ensure NTP/Chrony is configured and system time is set
+  hosts: chrony
+  become: yes
+  vars:
+    ntp_server: "10.210.0.25"
+    timezone: "Asia/Kolkata"
+
+  tasks:
+    - name: Install NTP package on Ubuntu
+      apt:
+        name: ntp
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Install ntpdate package on Ubuntu
+      apt:
+        name: ntpdate
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Install Chrony package on CentOS, AlmaLinux, Red Hat
+      package:
+        name: chrony
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Configure NTP on Ubuntu
+      block:
+        - name: Ensure the NTP configuration file is present
+          copy:
+            dest: /etc/ntp.conf
+            content: |
+              server {{ ntp_server }} iburst
+              driftfile /var/lib/ntp/ntp.drift
+              restrict -4 default kod notrap nomodify nopeer noquery
+              restrict -6 default kod notrap nomodify nopeer noquery
+
+        - name: Enable and start NTP service on Ubuntu
+          service:
+            name: ntp
+            state: started
+            enabled: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: Configure Chrony on CentOS, AlmaLinux, Red Hat
+      block:
+        - name: Ensure the Chrony configuration file is present
+          copy:
+            dest: /etc/chrony.conf
+            content: |
+              server {{ ntp_server }} iburst
+              driftfile /var/lib/chrony/drift
+              makestep 1.0 3
+              rtcsync
+              allow
+
+        - name: Enable and start Chrony service
+          service:
+            name: chronyd
+            state: started
+            enabled: yes
+      when: ansible_os_family == 'RedHat'
+
+    - name: Set the system timezone to IST (Indian Standard Time)
+      command: timedatectl set-timezone {{ timezone }}
+      register: timezone_result
+      changed_when: "'Time zone' in timezone_result.stdout"
+
+    - name: Ensure systemd-timesyncd is disabled on Ubuntu
+      service:
+        name: systemd-timesyncd
+        state: stopped
+        enabled: no
+      when: ansible_os_family == 'Debian'
+
+    - name: Enable NTP synchronization using timedatectl on Ubuntu
+      command: timedatectl set-ntp true
+      when: ansible_os_family == 'Debian'
+
+    - name: Verify NTP synchronization status on Ubuntu
+      command: timedatectl status
+      register: timedatectl_status
+      changed_when: false
+      when: ansible_os_family == 'Debian'
+
+    - name: Debug timedatectl status output on Ubuntu
+      debug:
+        var: timedatectl_status
+      when: ansible_os_family == 'Debian'
+
+    - name: Synchronize time on CentOS, AlmaLinux, Red Hat
+      command: chronyc -a makestep
+      register: chronyc_result
+      ignore_errors: yes
+      when: ansible_os_family == 'RedHat'
+
+    - name: Debug chronyc output
+      debug:
+        var: chronyc_result
+      when: ansible_os_family == 'RedHat'
+
+    - name: Ensure Chrony is enabled and started (CentOS, AlmaLinux, Red Hat)
+      service:
+        name: chronyd
+        enabled: yes
+        state: started
+      when: ansible_os_family == 'RedHat'
+
+    - name: Check Chrony service status on RedHat family
+      command: systemctl status chronyd
+      register: chronyd_status
+      when: ansible_os_family == 'RedHat'
+
+    - name: Debug Chrony service status
+      debug:
+        var: chronyd_status
+      when: ansible_os_family == 'RedHat'
+

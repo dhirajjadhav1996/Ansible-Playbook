@@ -1,0 +1,93 @@
+---
+- name: Configure Time and Chrony on the Server
+  hosts: chrony
+  become: true
+
+  tasks:
+    - name: Ensure timedatectl is available
+      command: timedatectl
+      ignore_errors: yes
+
+    - name: Set the timezone to Asia/Kolkata
+      command: timedatectl set-timezone Asia/Kolkata
+
+    - name: Install chrony on Debian-based systems
+      apt:
+        name: chrony
+        state: present
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Install chrony on RedHat-based systems
+      yum:
+        name: chrony
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Start and enable chronyd service
+      systemd:
+        name: chronyd
+        state: started
+        enabled: yes
+
+    - name: Check chronyd service status
+      command: systemctl status chronyd
+      register: chronyd_status
+      failed_when: chronyd_status.rc != 0
+      ignore_errors: yes
+
+    - name: Check chronyc activity
+      command: chronyc activity
+      register: chronyc_activity
+      failed_when: chronyc_activity.rc != 0
+      ignore_errors: yes
+
+    - name: Check chronyc sources
+      command: chronyc sources -v
+      register: chronyc_sources
+      failed_when: chronyc_sources.rc != 0
+      ignore_errors: yes
+
+    - name: Check chronyc tracking
+      command: chronyc tracking
+      register: chronyc_tracking
+      failed_when: chronyc_tracking.rc != 0
+      ignore_errors: yes
+
+    - name: Update /etc/chrony/chrony.conf
+      blockinfile:
+        path: /etc/chrony/chrony.conf
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          server 10.210.0.25
+      ignore_errors: yes
+
+    - name: Update /etc/chrony.conf
+      blockinfile:
+        path: /etc/chrony.conf
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          server 10.210.0.25
+      ignore_errors: yes
+
+
+    - name: Restart chronyd service
+      systemd:
+        name: chronyd
+        state: restarted
+
+    - name: Check chronyd service status after restart
+      command: systemctl status chronyd
+      register: chronyd_status_after_restart
+      failed_when: chronyd_status_after_restart.rc != 0
+      ignore_errors: yes
+
+    - name: Run chronyc burst command
+      command: chronyc -a 'burst 4/4'
+
+    - name: Run chronyc makestep command
+      command: chronyc -a makestep
+
+    - name: Show current timedatectl status
+      command: timedatectl
+      register: timedatectl_status
+

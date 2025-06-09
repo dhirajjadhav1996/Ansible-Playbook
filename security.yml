@@ -1,0 +1,268 @@
+---
+- name: Security Configuration Playbook
+  hosts: all
+  become: yes
+  tasks:
+    - name: Allow SSH on the firewall (Ubuntu)
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Allow SSH on the firewall (Ubuntu)
+      ansible.builtin.ufw:
+        rule: allow
+        name: OpenSSH
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Reload ufw on Ubuntu
+      ansible.builtin.command: ufw reload
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Allow SSH on the firewall (CentOS/AlmaLinux/Red Hat)
+      ansible.builtin.yum:
+        name: firewalld
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Allow SSH on the firewall (CentOS/AlmaLinux/Red Hat)
+      ansible.builtin.firewalld:
+        service: ssh
+        permanent: true
+        state: enabled
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Reload firewalld on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.service:
+        name: firewalld
+        state: reloaded
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Ensure SSH LogLevel is appropriate
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^LogLevel'
+        line: 'LogLevel VERBOSE'
+        create: yes
+
+    - name: Ensure SSH PAM is enabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^UsePAM'
+        line: 'UsePAM yes'
+        create: yes
+
+    - name: Ensure SSH HostbasedAuthentication is disabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^HostbasedAuthentication'
+        line: 'HostbasedAuthentication no'
+        create: yes
+
+    - name: Ensure SSH PermitEmptyPasswords is disabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitEmptyPasswords'
+        line: 'PermitEmptyPasswords no'
+        create: yes
+
+    - name: Ensure SSH PermitUserEnvironment is disabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitUserEnvironment'
+        line: 'PermitUserEnvironment no'
+        create: yes
+
+    - name: Ensure SSH IgnoreRhosts is enabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^IgnoreRhosts'
+        line: 'IgnoreRhosts yes'
+        create: yes
+
+    - name: Ensure SSH X11 forwarding is disabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^X11Forwarding'
+        line: 'X11Forwarding no'
+        create: yes
+
+    - name: Ensure only strong Ciphers are used
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^Ciphers'
+        line: 'Ciphers aes256-ctr,aes192-ctr,aes128-ctr'
+        create: yes
+
+    - name: Ensure only strong MAC algorithms are used
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^MACs'
+        line: 'MACs hmac-sha2-512,hmac-sha2-256'
+        create: yes
+
+    - name: Ensure only strong Key Exchange algorithms are used
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^KexAlgorithms'
+        line: 'KexAlgorithms diffie-hellman-group-exchange-sha256'
+        create: yes
+
+    - name: Ensure SSH AllowTcpForwarding is disabled
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^AllowTcpForwarding'
+        line: 'AllowTcpForwarding no'
+        create: yes
+
+
+    - name: Ensure SSH MaxAuthTries is set to 4 or less
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^MaxAuthTries'
+        line: 'MaxAuthTries 4'
+        create: yes
+
+    - name: Ensure SSH MaxSessions is set to 10 or less
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^MaxSessions'
+        line: 'MaxSessions 10'
+        create: yes
+
+    - name: Ensure SSH LoginGraceTime is set to one minute or less
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^LoginGraceTime'
+        line: 'LoginGraceTime 60'
+        create: yes
+
+    - name: Ensure SSH Idle Timeout Interval is configured
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^ClientAliveInterval'
+        line: 'ClientAliveInterval 300'
+        create: yes
+
+    - name: Ensure password creation requirements on Ubuntu
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: '^minlen'
+        line: 'minlen = 12'
+        create: yes
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Configure password creation requirements on Ubuntu
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: '^minclass'
+        line: 'minclass = 3'
+        create: yes
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Ensure password creation requirements on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: '^minlen'
+        line: 'minlen = 12'
+        create: yes
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Configure password creation requirements on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: '^minclass'
+        line: 'minclass = 3'
+        create: yes
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Ensure lockout for failed password attempts on Ubuntu
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-auth
+        regexp: '^auth required pam_tally2.so'
+        line: 'auth required pam_tally2.so deny=5 onerr=fail unlock_time=900'
+        create: yes
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Configure lockout for failed password attempts on Ubuntu
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-account
+        regexp: '^account required pam_tally2.so'
+        line: 'account required pam_tally2.so'
+        create: yes
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Ensure lockout for failed password attempts on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: '^auth required pam_tally2.so'
+        line: 'auth required pam_tally2.so deny=5 onerr=fail unlock_time=900'
+        create: yes
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Configure lockout for failed password attempts on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/password-auth
+        regexp: '^account required pam_tally2.so'
+        line: 'account required pam_tally2.so'
+        create: yes
+      when: ansible_facts['os_family'] == 'RedHat'
+
+
+    - name: Ensure password reuse is limited (Ubuntu)
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-password
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so remember=5'
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Configure password reuse limit on Ubuntu
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-password
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so use_authtok remember=5'
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Ensure password reuse is limited (CentOS/AlmaLinux/Red Hat)
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so remember=5'
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Configure password reuse limit on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so use_authtok remember=5'
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Ensure password hashing algorithm is SHA-512 (Ubuntu)
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-password
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so sha512'
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Configure password hashing algorithm on Ubuntu
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-password
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so sha512'
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Ensure password hashing algorithm is SHA-512 (CentOS/AlmaLinux/Red Hat)
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so sha512'
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Configure password hashing algorithm on CentOS, AlmaLinux, and Red Hat
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/system-auth
+        regexp: '^password\s+required\s+pam_unix.so'
+        line: 'password required pam_unix.so sha512'
+      when: ansible_facts['os_family'] == 'RedHat'
+
+

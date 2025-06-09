@@ -1,0 +1,61 @@
+---
+- name: Create a VM on VMware ESXi
+  hosts: esxi
+  gather_facts: no
+  collections:
+    - community.vmware
+
+  vars_prompt:
+    - name: "vm_name"
+      prompt: "Enter the name of the VM"
+      private: no
+    - name: "vm_ip"
+      prompt: "Enter the IP address for the VM"
+      private: no
+    - name: "vm_netmask"
+      prompt: "Enter the netmask for the VM"
+      private: no
+    - name: "vm_gateway"
+      prompt: "Enter the gateway for the VM"
+      private: no
+
+  tasks:
+    - name: Create a virtual machine
+      community.vmware.vmware_guest:
+        hostname: "{{ ansible_host }}"
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: no
+        name: "{{ vm_name }}"
+        state: powered_on
+        guest_id: centos64Guest
+        disk:
+          - size_gb: 20
+            type: thin
+            datastore: datastore1
+        hardware:
+          memory_mb: 2048
+          num_cpus: 2
+        networks:
+          - name: VM Network
+            type: static
+            ip: "{{ vm_ip }}"
+            netmask: "{{ vm_netmask }}"
+            gateway: "{{ vm_gateway }}"
+            dns_servers:
+              - 10.210.0.11
+              - 8.8.4.4
+        wait_for_ip_address: yes
+
+    - name: Set root password (assuming cloud-init or similar is in place)
+      community.vmware.vmware_guest:
+        hostname: "{{ ansible_host }}"
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        validate_certs: no
+        name: "{{ vm_name }}"
+        state: present
+        customvalues:
+          - key: "guestinfo.root_password"
+            value: "new_root_password"
+

@@ -1,0 +1,90 @@
+---
+- name: System Updates and Enable Automatic Updates
+  hosts: all
+  become: yes
+  vars:
+    unattended_upgrades_package: unattended-upgrades
+
+  tasks:
+    - name: Update package list and upgrade all packages for Debian-based systems
+      apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Update package list and upgrade all packages for RedHat-based systems
+      yum:
+        name: '*'
+        state: latest
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Install unattended-upgrades for Debian-based systems
+      apt:
+        name: "{{ unattended_upgrades_package }}"
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Preseed unattended-upgrades package for Debian-based systems
+      debconf:
+        name: "{{ unattended_upgrades_package }}"
+        question: 'unattended-upgrades/enable_auto_updates'
+        value: 'true'
+        vtype: 'boolean'
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Ensure unattended-upgrades is configured properly for Debian-based systems
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Ensure yum-cron is installed for CentOS 7
+      yum:
+        name: yum-cron
+        state: present
+      when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "7"
+
+    - name: Enable and start yum-cron for automatic updates on CentOS 7
+      systemd:
+        name: yum-cron
+        enabled: yes
+        state: started
+      when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "7"
+
+    - name: Ensure dnf-automatic is installed for CentOS 8 or later
+      yum:
+        name: dnf-automatic
+        state: present
+      when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "8") or
+            (ansible_distribution in ["RedHat", "AlmaLinux"] and ansible_distribution_major_version == "8")
+
+    - name: Enable and start dnf-automatic.timer for automatic updates on CentOS 8 or later
+      systemd:
+        name: dnf-automatic.timer
+        enabled: yes
+        state: started
+      when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "8") or
+            (ansible_distribution in ["RedHat", "AlmaLinux"] and ansible_distribution_major_version == "8")
+
+    - name: Ensure dnf-automatic is configured for automatic updates
+      copy:
+        dest: /etc/dnf/automatic.conf
+        content: |
+          [commands]
+          upgrade_type = default
+          random_sleep = 0
+          download_updates = yes
+          apply_updates = yes
+          [emitters]
+          emit_via = stdio
+          [base]
+          debuglevel = 1
+          [email]
+          email_to = root
+          email_from = root
+          email_host = localhost
+      when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "8") or
+            (ansible_distribution in ["RedHat", "AlmaLinux"] and ansible_distribution_major_version == "8")
+
